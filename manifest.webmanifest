@@ -1,0 +1,27 @@
+{
+  "name": "荒岛余生 · The Last Shore",
+  "short_name": "荒岛余生",
+  "description": "荒岛生存游戏：采集、制作、生火，点燃烽火等待救援。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#071318",
+  "theme_color": "#071318",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

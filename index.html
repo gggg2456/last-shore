@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#071318">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="荒岛余生">
+<meta name="application-name" content="荒岛余生">
+<title>荒岛余生 · The Last Shore</title>
+<meta name="description" content="荒岛生存游戏：采集、制作、生火，点燃烽火等待救援。">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script>
+window.addEventListener('error', function (e) {
+  var box = document.getElementById('bootError');
+  if (!box) return;
+  box.classList.remove('hidden');
+  var d = document.getElementById('bootErrorDetail');
+  if (d) d.textContent = (e.message || '脚本没有启动') + (e.lineno ? ' · 第 ' + e.lineno + ' 行' : '');
+});
+window.addEventListener('unhandledrejection', function (e) {
+  var box = document.getElementById('bootError');
+  if (!box) return;
+  box.classList.remove('hidden');
+  var d = document.getElementById('bootErrorDetail');
+  if (d) d.textContent = String((e.reason && e.reason.message) || e.reason || '脚本没有启动');
+});
+</script>
+<script>
+// 只有安全上下文（https / localhost）才注册 Service Worker；本地 file:// 打开自动跳过。
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  var secure = location.protocol === 'https:' ||
+    location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!secure) return;
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 忽略 */ });
+  });
+})();
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="bootError" class="hidden">
+  <div class="boot-error-box">
+    <b>游戏没有正常启动</b>
+    <p>请用 Chrome、Edge 或 Safari 打开；如果在微信 / QQ 里，请点右上角“…”→“在浏览器中打开”。</p>
+    <p>如果仍然白屏，请刷新页面重试；并确认浏览器已允许 JavaScript。</p>
+    <small id="bootErrorDetail"></small>
+    <button onclick="location.reload()">重新加载</button>
+  </div>
+</div>
+<noscript><div class="boot-error-box" style="position:fixed;inset:20px;z-index:99999"><b>需要启用 JavaScript</b><p>请在浏览器设置中允许 JavaScript 后重新打开。</p></div></noscript>
+
+<div id="ui">
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-mark">LAST<br>SHORE</span>
+      <div><h1>荒岛余生</h1><p>一座岛，一个人，一堆火。</p></div>
+    </div>
+    <div id="clockbox">
+      <div class="clock-row"><span id="dayText">第 1 天</span><span id="clockText">08:00</span></div>
+      <div class="clock-sub"><span id="weatherIcon">☀</span><span id="weatherText">晴朗</span><span class="dot">·</span><span id="phaseText">白昼</span></div>
+    </div>
+    <div class="top-actions">
+      <button id="modeBtn" class="icon-btn mode-btn" title="切换界面模式：自动 / 桌面 / 手机">自动</button>
+      <button id="mobileQuestBtn" class="icon-btn mobile-only" title="生存目标">目标</button>
+      <button id="helpBtn" class="icon-btn" title="操作说明">?</button>
+    </div>
+  </header>
+
+  <aside id="hud" class="panel">
+    <div class="panel-title"><span>生命体征</span><span id="statusTags" class="tags"></span></div>
+    <div class="stat" data-k="health"><div class="stat-head"><span>❤ 生命</span><b id="v-health">100</b></div><div class="bar"><i id="b-health"></i></div></div>
+    <div class="stat" data-k="hunger"><div class="stat-head"><span>🍖 饥饿</span><b id="v-hunger">100</b></div><div class="bar"><i id="b-hunger"></i></div></div>
+    <div class="stat" data-k="thirst"><div class="stat-head"><span>💧 口渴</span><b id="v-thirst">100</b></div><div class="bar"><i id="b-thirst"></i></div></div>
+    <div class="stat" data-k="energy"><div class="stat-head"><span>⚡ 体力</span><b id="v-energy">100</b></div><div class="bar"><i id="b-energy"></i></div></div>
+    <div class="stat" data-k="warmth"><div class="stat-head"><span>🔥 体温</span><b id="v-warmth">100</b></div><div class="bar"><i id="b-warmth"></i></div></div>
+    <div class="hud-foot">
+      <div class="tool-badges" id="tools"></div>
+      <div class="weight"><span>饱食 / 饮水</span><b id="bodyState">状态良好</b></div>
+    </div>
+  </aside>
+
+  <aside id="quest" class="panel">
+    <div class="panel-title"><span>主线 · 生存目标</span><span id="questCount">0/10</span></div>
+    <div id="chapterText" class="chapter-text">第一章 · 残骸</div>
+    <ol id="questList"></ol>
+    <div id="compass">
+      <div class="compass-row"><span class="compass-arrow" id="compassArrow">➤</span><span id="compassLabel">信号高地</span><b id="compassDist">-- m</b></div>
+      <div class="compass-track"><i id="compassBar"></i></div>
+    </div>
+  </aside>
+
+  <div id="finale" class="hidden">
+    <div class="finale-head"><span>救援信号已发出</span><b id="rescueTime">180</b></div>
+    <p>让烽火保持燃烧，直到救援船抵达。</p>
+    <div class="fuel"><i id="fuelBar"></i></div>
+    <small id="fuelText">烽火燃料 50 秒</small>
+  </div>
+
+  <div id="mobileCompass" class="mobile-only"><span class="compass-arrow" id="mcArrow">➤</span><span id="mcLabel">信号高地</span><b id="mcDist">-- m</b></div>
+
+  <div id="log"></div>
+
+  <div id="prompt" class="hidden"><kbd>E</kbd><span id="promptText"></span></div>
+
+  <div id="touchUI" class="mobile-only">
+    <div id="joystick" aria-label="移动摇杆">
+      <div class="joy-ring"></div>
+      <div class="joy-knob" id="joyKnob"></div>
+      <span class="joy-label">移动</span>
+    </div>
+    <div id="touchActions">
+      <button class="touch-btn sprint" data-touch="sprint" aria-label="切换疾跑"><b>⇧</b><small>疾跑</small></button>
+      <button class="touch-btn" data-touch="rest" aria-label="休息"><b>R</b><small>休息</small></button>
+      <button class="touch-btn" data-touch="craft" aria-label="制作"><b>C</b><small>制作</small></button>
+      <button class="touch-btn action" data-touch="interact" aria-label="互动"><b>E</b><small>互动</small></button>
+    </div>
+  </div>
+
+  <div id="bottom">
+    <div id="controls">
+      <span><kbd>WASD</kbd> 移动</span><span><kbd>E</kbd> 互动</span><span><kbd>C</kbd> 制作</span><span><kbd>R</kbd> 休息</span><span><kbd>Shift</kbd> 冲刺</span>
+    </div>
+    <div class="bottom-row">
+      <div id="inventory" class="panel"></div>
+      <div class="bottom-actions">
+        <button id="craftBtn" class="action-btn"><span>制作</span><kbd>C</kbd></button>
+        <button id="restBtn" class="action-btn"><span>休息</span><kbd>R</kbd></button>
+      </div>
+    </div>
+    <div class="inv-tip">点击物品使用 · 生鱼、生肉、生水在篝火旁可加工 · 靠近资源 / 木筏 / 野兽按 E</div>
+  </div>
+</div>
+
+<div id="start" class="overlay">
+  <div class="start-copy">
+    <div class="kicker">ISLAND SURVIVAL · 生存模拟</div>
+    <h2>荒岛<br><em>余生</em></h2>
+    <p class="lead">飞机坠入太平洋。你被潮水推上沙滩，机身沉入深海。<br>没有救援，没有信号，只有一片群岛和即将到来的夜晚。</p>
+    <div class="story-goal">
+      <span>主线任务</span>
+      <strong>横渡六座岛，找回黑匣子、线圈、蓄电池、柴油和点火模块，在信号高地组装无线电，点燃烽火守住 180 秒。</strong>
+    </div>
+    <div class="start-cards">
+      <div><b>01</b><span>黑匣子</span><small>搜索飞机残骸，找回记录着求救频率的黑匣子。</small></div>
+      <div><b>02</b><span>横渡群岛</span><small>雾林岛取线圈，环礁岛取蓄电池，沉船湾取柴油，火山岛取点火模块。</small></div>
+      <div><b>03</b><span>发出信号</span><small>爬上信号高地组装无线电，点燃烽火并守住它。</small></div>
+    </div>
+    <button id="startBtn" class="primary-btn">开始求生 <kbd>Enter</kbd></button>
+    <div class="start-secondary">
+      <button type="button" id="startModeBtn" class="start-mode-btn" aria-label="切换界面布局">界面：自动</button>
+      <button type="button" id="startGuideBtn" class="start-mode-btn" aria-label="查看新手指引">新手指引</button>
+    </div>
+    <div class="start-keys"><span><kbd>WASD</kbd> 移动</span><span><kbd>E</kbd> 互动</span><span><kbd>C</kbd> 制作</span><span><kbd>R</kbd> 休息</span><span><kbd>Shift</kbd> 冲刺</span></div>
+    <div class="touch-hint mobile-only">左侧摇杆移动 · 右侧按钮互动 / 制作 / 休息 · 疾跑可切换<br>顶部“自动 / 手机 / 桌面”切换布局 · 横竖屏均可游玩</div>
+  </div>
+  <div class="start-side">
+    <div class="compass-rose">N</div>
+    <p>“潮水会带走很多东西，<br>但不会带走活下去的念头。”</p>
+    <small>建议全屏游玩 · 约 15–25 分钟一局</small>
+  </div>
+</div>
+
+<div id="craftModal" class="overlay modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div><span class="kicker">CRAFT & BUILD</span><h3>制作与建造</h3></div>
+      <button id="closeCraft" class="icon-btn">✕</button>
+    </div>
+    <p class="modal-desc">所有制作都会消耗背包里的材料。工具只需制作一次；篝火和庇护所可以建造多个。</p>
+    <div id="craftGrid"></div>
+    <div class="modal-foot">按 <kbd>C</kbd> 或 <kbd>Esc</kbd> 关闭 · 制作时时间暂停</div>
+  </div>
+</div>
+
+<div id="helpModal" class="overlay modal hidden">
+  <div class="modal-box help-box">
+    <div class="modal-head"><div><span class="kicker">FIELD MANUAL</span><h3>荒岛手册</h3></div><button id="closeHelp" class="icon-btn">✕</button></div>
+    <div class="help-grid">
+      <section><h4>活下来</h4><p>饥饿、口渴和体温归零会持续扣血。夜晚寒冷，靠近燃烧的篝火可以取暖。按 <kbd>R</kbd> 原地休息恢复体力，但时间与消耗不会停下。</p></section>
+      <section><h4>水与食物</h4><p>池塘生水有概率导致肠胃炎，椰子安全。生鱼需要长矛捕捉，在篝火旁点击可烤熟。草药可以治病。庇护所夜晚可睡到清晨。</p></section>
+      <section><h4>工具</h4><p>石斧提高伐木收益。长矛用于捕鱼。水囊让你从池塘取水带走，也能在篝火旁烧开。没有水囊时只能直接饮用生水。</p></section>
+      <section><h4>野兽</h4><p>林子里有野猪，礁石间有岛蛇。靠近时按 <kbd>E</kbd> 攻击；野猪要 4 下木棍或 2 下长矛。受伤后会流血，草药能止血；蛇咬还可能中毒。天黑后野兽更活跃，点火也会把它们引过来。</p></section>
+      <section><h4>获救</h4><p>先在坠机岛取得黑匣子，再到南岸木筏按 <kbd>E</kbd> 打开航海图。雾林岛有铜线圈，环礁岛有蓄电池，沉船湾有柴油，火山岛有点火模块；五件部件齐了再去信号岛。在信号高地组装无线电（另需 9 木材、5 石块、3 纤维），点燃烽火后坚持 <b>180 秒</b>，中途会有两波野兽围攻。烽火会持续消耗燃料，靠近按 <kbd>E</kbd> 添柴。</p></section>
+    </div>
+    <div class="help-actions">
+      <button type="button" id="guideFromHelp" class="guide-link-btn">查看新手指引</button>
+      <button id="helpOk" class="primary-btn small">继续求生</button>
+    </div>
+  </div>
+</div>
+
+<div id="guideModal" class="overlay modal hidden">
+  <div class="modal-box guide-box">
+    <div class="guide-head">
+      <div>
+        <span class="kicker">NEW PLAYER GUIDE · 新手指引</span>
+        <h3>五步活过第一晚</h3>
+      </div>
+      <button id="closeGuide" class="icon-btn" aria-label="关闭新手指引">✕</button>
+    </div>
+    <div id="guideProgress" class="guide-progress" aria-hidden="true"></div>
+    <div class="guide-main">
+      <div class="guide-emblem"><span id="guideIcon">🔥</span><b id="guideStepNo">01</b></div>
+      <div class="guide-content">
+        <span id="guideKicker" class="guide-kicker">第 1 / 5 步</span>
+        <h4 id="guideHeading">先盯住五条状态</h4>
+        <p id="guideText"></p>
+        <ul id="guideTips" class="guide-tips"></ul>
+      </div>
+    </div>
+    <div class="guide-foot">
+      <button type="button" id="guideSkip" class="guide-skip">跳过指引</button>
+      <div class="guide-nav">
+        <button type="button" id="guidePrev" class="guide-prev">上一步</button>
+        <button type="button" id="guideNext" class="primary-btn small">下一步 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="storyModal" class="overlay modal hidden">
+  <div class="modal-box story-box">
+    <div class="modal-head">
+      <div><span class="kicker" id="storyKicker">CHAPTER</span><h3 id="storyTitle">残骸</h3></div>
+      <button id="closeStory" class="icon-btn" aria-label="关闭剧情">✕</button>
+    </div>
+    <div id="storyBody" class="story-body"></div>
+    <button id="storyOk" class="primary-btn small">继续</button>
+  </div>
+</div>
+
+<div id="mapModal" class="overlay modal hidden">
+  <div class="modal-box map-box">
+    <div class="modal-head">
+      <div><span class="kicker">SEA CHART · 航海图</span><h3>选择岛屿</h3></div>
+      <button id="closeMap" class="icon-btn" aria-label="关闭航海图">✕</button>
+    </div>
+    <p class="modal-desc">木筏只能沿着已知航线行驶。每座岛都有不同的资源和危险；离岛后，岛上的营地会留在原地。</p>
+    <div id="mapGrid"></div>
+    <div class="modal-foot">靠近木筏按 <kbd>E</kbd> 打开航海图 · 航行会消耗时间与体力</div>
+  </div>
+</div>
+
+<div id="end" class="overlay hidden">
+  <div class="end-box">
+    <span class="kicker" id="endKicker">THE END</span>
+    <h2 id="endTitle">你倒下了</h2>
+    <p id="endText"></p>
+    <div id="endStats" class="end-stats"></div>
+    <button id="restartBtn" class="primary-btn">重新开始 <kbd>Enter</kbd></button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
